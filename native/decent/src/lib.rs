@@ -19,15 +19,15 @@ mod atoms {
 
 /// Encrypts a message using the recipient's public key.
 pub fn encrypt_internal(
+    plaintext: &str,
     public_key_path: &str,
-    message: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // Load the public key
     let public_key_data = fs::read(public_key_path)?;
     let (public_key, _) = SignedPublicKey::from_armor_single(Cursor::new(&public_key_data))?;
 
     // Create a PGP message
-    let literal_message = Message::new_literal("msg", message);
+    let literal_message = Message::new_literal("msg", plaintext);
 
     // Encrypt the message
     let encrypted_message = literal_message.encrypt_to_keys_seipdv1(
@@ -42,9 +42,9 @@ pub fn encrypt_internal(
 
 /// Decrypts an encrypted message using the recipient's private key.
 pub fn decrypt_internal(
+    ciphertext: &[u8],
     private_key_path: &str,
     passphrase: &str,
-    encrypted_data: &[u8],
 ) -> Result<String, Box<dyn std::error::Error>> {
     // Load the private key
     let private_key_data = fs::read(private_key_path)?;
@@ -54,7 +54,7 @@ pub fn decrypt_internal(
     let _ = private_key.unlock(|| passphrase.to_string(), |_| Ok(()))?;
 
     // Parse the encrypted message
-    let (message, _) = Message::from_armor_single(Cursor::new(encrypted_data))?;
+    let (message, _) = Message::from_armor_single(Cursor::new(ciphertext))?;
 
     // Decrypt the message
     let (decrypted_message, _) = message.decrypt(|| passphrase.to_string(), &[&private_key])?;
@@ -71,8 +71,8 @@ pub fn decrypt_internal(
 }
 
 #[rustler::nif]
-fn encrypt<'a>(env: Env<'a>, public_key_path: &str, message: &str) -> NifResult<Term<'a>> {
-    match encrypt_internal(public_key_path, message) {
+fn encrypt<'a>(env: Env<'a>, plaintext: &str, public_key_path: &str) -> NifResult<Term<'a>> {
+    match encrypt_internal(plaintext, public_key_path) {
         Ok(encrypted) => {
             // Create a new OwnedBinary with the size of the encrypted data
             let mut owned_binary = OwnedBinary::new(encrypted.len()).unwrap();
@@ -94,11 +94,11 @@ fn encrypt<'a>(env: Env<'a>, public_key_path: &str, message: &str) -> NifResult<
 #[rustler::nif]
 fn decrypt<'a>(
     env: Env<'a>,
+    ciphertext: rustler::types::Binary<'a>,
     private_key_path: &str,
     passphrase: &str,
-    encrypted_data: rustler::types::Binary<'a>,
 ) -> NifResult<Term<'a>> {
-    match decrypt_internal(private_key_path, passphrase, encrypted_data.as_slice()) {
+    match decrypt_internal(ciphertext.as_slice(), private_key_path, passphrase) {
         Ok(decrypted) => Ok((atoms::ok(), decrypted).encode(env)),
         Err(e) => {
             let error_message = format!("{:?}", e);
