@@ -3,7 +3,11 @@ defmodule Decent do
   Functions for encrypting and decrypting messages using PGP.
   """
 
-  use Rustler, otp_app: :decent, crate: :decent
+  use RustlerPrecompiled,
+    otp_app: :decent,
+    crate: :decent,
+    base_url: "https://github.com/trestletree/decent/releases/download/v0.1.0",
+    version: "0.1.0"
 
   @doc """
   Encrypts a message using a public key.
