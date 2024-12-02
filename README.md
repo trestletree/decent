@@ -1,6 +1,6 @@
 # Decent
 
-**TODO: Add description**
+A simple Pretty Good Privacy (PGP) Elixir library, wrapping functions from the [pgp Rust crate](https://crates.io/crates/pgp). Enables encrypting with a public key and decrypting with the corresponding private key.
 
 ## Installation
 
@@ -18,4 +18,3 @@ end
 Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at <https://hexdocs.pm/decent>.
-
