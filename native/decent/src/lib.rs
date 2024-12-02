@@ -19,7 +19,7 @@ mod atoms {
 
 /// Encrypts a message using the recipient's public key.
 pub fn encrypt_internal(
-    plaintext: &str,
+    message: &str,
     public_key_path: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // Load the public key
@@ -27,7 +27,7 @@ pub fn encrypt_internal(
     let (public_key, _) = SignedPublicKey::from_armor_single(Cursor::new(&public_key_data))?;
 
     // Create a PGP message
-    let literal_message = Message::new_literal("msg", plaintext);
+    let literal_message = Message::new_literal("msg", message);
 
     // Encrypt the message
     let encrypted_message = literal_message.encrypt_to_keys_seipdv1(
@@ -42,24 +42,25 @@ pub fn encrypt_internal(
 
 /// Decrypts an encrypted message using the recipient's private key.
 pub fn decrypt_internal(
-    ciphertext: &[u8],
+    encrypted_message: &[u8],
     private_key_path: &str,
-    passphrase: &str,
+    private_key_passphrase: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    // Load the private key
     let private_key_data = fs::read(private_key_path)?;
     let (private_key, _) = SignedSecretKey::from_armor_single(Cursor::new(&private_key_data))?;
 
-    // Unlock the private key with the passphrase (this step might not be necessary for decryption)
-    let _ = private_key.unlock(|| passphrase.to_string(), |_| Ok(()))?;
+    // Unlock the private key with the passphrase if provided
+    if let Some(passphrase) = private_key_passphrase {
+        let _ = private_key.unlock(|| passphrase.to_string(), |_| Ok(()))?;
+    }
 
-    // Parse the encrypted message
-    let (message, _) = Message::from_armor_single(Cursor::new(ciphertext))?;
+    let (message, _) = Message::from_armor_single(Cursor::new(encrypted_message))?;
 
-    // Decrypt the message
-    let (decrypted_message, _) = message.decrypt(|| passphrase.to_string(), &[&private_key])?;
+    let (decrypted_message, _) = message.decrypt(
+        || private_key_passphrase.map(String::from).unwrap_or_default(),
+        &[&private_key],
+    )?;
 
-    // Extract the literal data
     match decrypted_message {
         Message::Literal(literal_message) => {
             let mut data = Vec::new();
@@ -71,8 +72,8 @@ pub fn decrypt_internal(
 }
 
 #[rustler::nif]
-fn encrypt<'a>(env: Env<'a>, plaintext: &str, public_key_path: &str) -> NifResult<Term<'a>> {
-    match encrypt_internal(plaintext, public_key_path) {
+fn encrypt<'a>(env: Env<'a>, message: &str, public_key_path: &str) -> NifResult<Term<'a>> {
+    match encrypt_internal(message, public_key_path) {
         Ok(encrypted) => {
             // Create a new OwnedBinary with the size of the encrypted data
             let mut owned_binary = OwnedBinary::new(encrypted.len()).unwrap();
@@ -94,11 +95,15 @@ fn encrypt<'a>(env: Env<'a>, plaintext: &str, public_key_path: &str) -> NifResul
 #[rustler::nif]
 fn decrypt<'a>(
     env: Env<'a>,
-    ciphertext: rustler::types::Binary<'a>,
+    encrypted_message: rustler::types::Binary<'a>,
     private_key_path: &str,
-    passphrase: &str,
+    private_key_passphrase: Option<&str>,
 ) -> NifResult<Term<'a>> {
-    match decrypt_internal(ciphertext.as_slice(), private_key_path, passphrase) {
+    match decrypt_internal(
+        encrypted_message.as_slice(),
+        private_key_path,
+        private_key_passphrase,
+    ) {
         Ok(decrypted) => Ok((atoms::ok(), decrypted).encode(env)),
         Err(e) => {
             let error_message = format!("{:?}", e);

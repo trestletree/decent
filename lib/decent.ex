@@ -1,13 +1,19 @@
 defmodule Decent do
   @moduledoc """
-  Documentation for `Decent`.
+  Functions for encrypting and decrypting messages using PGP.
   """
 
   use Rustler, otp_app: :decent, crate: :decent
 
-  def encrypt(_plaintext, _public_key_path),
+  @doc """
+  Encrypts a message using a public key.
+  """
+  def encrypt(_message, _public_key_path),
     do: :erlang.nif_error(:nif_not_loaded)
 
-  def decrypt(_ciphertext, _private_key_path, _passphrase \\ nil),
+  @doc """
+  Decrypts a message using a private key.
+  """
+  def decrypt(_encrypted_message, _private_key_path, _private_key_passphrase \\ nil),
     do: :erlang.nif_error(:nif_not_loaded)
 end
