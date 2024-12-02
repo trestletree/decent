@@ -6,6 +6,9 @@ defmodule DecentTest do
     pub_key = File.read!(Path.expand("../priv/test_keys/decent.pub.asc", __DIR__))
     priv_key = File.read!(Path.expand("../priv/test_keys/decent.priv.asc", __DIR__))
 
+    pub_key_without_passphrase =
+      File.read!(Path.expand("../priv/test_keys/decent-without-passphrase.pub.asc", __DIR__))
+
     priv_key_without_passphrase =
       File.read!(Path.expand("../priv/test_keys/decent-without-passphrase.priv.asc", __DIR__))
 
@@ -21,6 +24,7 @@ defmodule DecentTest do
      bad_pub_key: bad_pub_key,
      bad_priv_key: bad_priv_key,
      priv_key_passphrase: priv_key_passphrase,
+     pub_key_without_passphrase: pub_key_without_passphrase,
      bad_priv_key_passphrase: bad_priv_key_passphrase}
   end
 
@@ -39,18 +43,18 @@ defmodule DecentTest do
     assert decrypted == plain_text
   end
 
-  # test "encrypt and decrypt without passphrase", %{
-  #   pub_key: pub_key,
-  #   priv_key_without_passphrase: priv_key_without_passphrase
-  # } do
-  #   plain_text = "this is a test"
+  test "encrypt and decrypt without passphrase", %{
+    pub_key_without_passphrase: pub_key_without_passphrase,
+    priv_key_without_passphrase: priv_key_without_passphrase
+  } do
+    plain_text = "this is a test"
 
-  #   assert {:ok, encrypted} = Decent.encrypt(plain_text, pub_key)
+    assert {:ok, encrypted} = Decent.encrypt(plain_text, pub_key_without_passphrase)
 
-  #   assert {:ok, decrypted} = Decent.decrypt(encrypted, priv_key_without_passphrase)
+    assert {:ok, decrypted} = Decent.decrypt(encrypted, priv_key_without_passphrase)
 
-  #   assert decrypted == plain_text
-  # end
+    assert decrypted == plain_text
+  end
 
   test "decrypt with bad passphrase", %{
     pub_key: pub_key,
