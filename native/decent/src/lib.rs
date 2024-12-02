@@ -7,17 +7,14 @@ use rand::thread_rng;
 use rustler::types::binary::OwnedBinary;
 use rustler::NifResult;
 use rustler::{Encoder, Env, Term};
-use std::fs;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
+use std::io::Read;
 
 use pgp::errors::Error as PgpLibError;
-use std::io::Error as IoError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PgpError {
-    #[error("Failed to read public key file: {0}")]
-    PublicKeyFileReadError(#[from] IoError),
     #[error("Invalid public key format")]
     InvalidPublicKeyFormat,
     #[error("Invalid private key format")]
@@ -37,9 +34,9 @@ mod atoms {
     }
 }
 
-pub fn encrypt_internal(message: &str, public_key_path: &str) -> Result<Vec<u8>, PgpError> {
-    let public_key_data = fs::read(public_key_path).map_err(PgpError::PublicKeyFileReadError)?;
-    let (public_key, _) = SignedPublicKey::from_armor_single(Cursor::new(&public_key_data))
+/// Encrypts a message using the recipient's public key provided as a byte slice.
+pub fn encrypt_internal(message: &str, public_key: &[u8]) -> Result<Vec<u8>, PgpError> {
+    let (public_key, _) = SignedPublicKey::from_armor_single(Cursor::new(public_key))
         .map_err(|_| PgpError::InvalidPublicKeyFormat)?;
 
     let literal_message = Message::new_literal("msg", message);
@@ -47,18 +44,18 @@ pub fn encrypt_internal(message: &str, public_key_path: &str) -> Result<Vec<u8>,
         &mut thread_rng(),
         SymmetricKeyAlgorithm::AES256,
         &[&public_key],
-    )?; // This now works because of the `From` implementation.
+    )?;
 
     Ok(encrypted_message.to_armored_bytes(Default::default())?)
 }
 
+/// Decrypts an encrypted message using the recipient's private key provided as a byte slice.
 pub fn decrypt_internal(
     encrypted_message: &[u8],
-    private_key_path: &str,
+    private_key: &[u8],
     private_key_passphrase: Option<&str>,
 ) -> Result<String, PgpError> {
-    let private_key_data = fs::read(private_key_path).map_err(PgpError::PublicKeyFileReadError)?;
-    let (private_key, _) = SignedSecretKey::from_armor_single(Cursor::new(&private_key_data))
+    let (private_key, _) = SignedSecretKey::from_armor_single(Cursor::new(private_key))
         .map_err(|_| PgpError::InvalidPrivateKeyFormat)?;
 
     if let Some(passphrase) = private_key_passphrase {
@@ -103,8 +100,12 @@ pub fn decrypt_internal(
 }
 
 #[rustler::nif]
-fn encrypt<'a>(env: Env<'a>, message: &str, public_key_path: &str) -> NifResult<Term<'a>> {
-    match encrypt_internal(message, public_key_path) {
+fn encrypt<'a>(
+    env: Env<'a>,
+    message: &str,
+    public_key: rustler::types::Binary<'a>,
+) -> NifResult<Term<'a>> {
+    match encrypt_internal(message, public_key.as_slice()) {
         Ok(encrypted) => {
             let mut owned_binary = OwnedBinary::new(encrypted.len()).unwrap();
             owned_binary.as_mut_slice().copy_from_slice(&encrypted);
@@ -122,12 +123,12 @@ fn encrypt<'a>(env: Env<'a>, message: &str, public_key_path: &str) -> NifResult<
 fn decrypt<'a>(
     env: Env<'a>,
     encrypted_message: rustler::types::Binary<'a>,
-    private_key_path: &str,
+    private_key: rustler::types::Binary<'a>,
     private_key_passphrase: Option<&str>,
 ) -> NifResult<Term<'a>> {
     match decrypt_internal(
         encrypted_message.as_slice(),
-        private_key_path,
+        private_key.as_slice(),
         private_key_passphrase,
     ) {
         Ok(decrypted) => Ok((atoms::ok(), decrypted).encode(env)),
