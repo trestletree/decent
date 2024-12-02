@@ -13,3 +13,4 @@ crate-type = ["cdylib"]
 rustler = "0.34.0"
 pgp = "0.14.0"
 rand = "0.8.5"
+thiserror = "2.0.3"

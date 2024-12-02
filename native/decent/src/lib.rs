@@ -10,6 +10,26 @@ use rustler::{Encoder, Env, Term};
 use std::fs;
 use std::io::{Cursor, Read};
 
+use pgp::errors::Error as PgpLibError;
+use std::io::Error as IoError;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum PgpError {
+    #[error("Failed to read public key file: {0}")]
+    PublicKeyFileReadError(#[from] IoError),
+    #[error("Invalid public key format")]
+    InvalidPublicKeyFormat,
+    #[error("Invalid private key format")]
+    InvalidPrivateKeyFormat,
+    #[error("Encryption failed: {0}")]
+    EncryptionError(#[from] PgpLibError),
+    #[error("Decryption failed: {0}")]
+    DecryptionError(String),
+    #[error("Incorrect passphrase")]
+    IncorrectPassphrase,
+}
+
 mod atoms {
     rustler::atoms! {
         ok,
@@ -17,57 +37,68 @@ mod atoms {
     }
 }
 
-/// Encrypts a message using the recipient's public key.
-pub fn encrypt_internal(
-    message: &str,
-    public_key_path: &str,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // Load the public key
-    let public_key_data = fs::read(public_key_path)?;
-    let (public_key, _) = SignedPublicKey::from_armor_single(Cursor::new(&public_key_data))?;
+pub fn encrypt_internal(message: &str, public_key_path: &str) -> Result<Vec<u8>, PgpError> {
+    let public_key_data = fs::read(public_key_path).map_err(PgpError::PublicKeyFileReadError)?;
+    let (public_key, _) = SignedPublicKey::from_armor_single(Cursor::new(&public_key_data))
+        .map_err(|_| PgpError::InvalidPublicKeyFormat)?;
 
-    // Create a PGP message
     let literal_message = Message::new_literal("msg", message);
-
-    // Encrypt the message
     let encrypted_message = literal_message.encrypt_to_keys_seipdv1(
         &mut thread_rng(),
         SymmetricKeyAlgorithm::AES256,
         &[&public_key],
-    )?;
+    )?; // This now works because of the `From` implementation.
 
-    // Serialize the encrypted message to bytes
     Ok(encrypted_message.to_armored_bytes(Default::default())?)
 }
 
-/// Decrypts an encrypted message using the recipient's private key.
 pub fn decrypt_internal(
     encrypted_message: &[u8],
     private_key_path: &str,
     private_key_passphrase: Option<&str>,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let private_key_data = fs::read(private_key_path)?;
-    let (private_key, _) = SignedSecretKey::from_armor_single(Cursor::new(&private_key_data))?;
+) -> Result<String, PgpError> {
+    let private_key_data = fs::read(private_key_path).map_err(PgpError::PublicKeyFileReadError)?;
+    let (private_key, _) = SignedSecretKey::from_armor_single(Cursor::new(&private_key_data))
+        .map_err(|_| PgpError::InvalidPrivateKeyFormat)?;
 
-    // Unlock the private key with the passphrase if provided
     if let Some(passphrase) = private_key_passphrase {
-        let _ = private_key.unlock(|| passphrase.to_string(), |_| Ok(()))?;
+        private_key
+            .unlock(|| passphrase.to_string(), |_| Ok(()))
+            .map_err(|_| PgpError::IncorrectPassphrase)?;
     }
 
-    let (message, _) = Message::from_armor_single(Cursor::new(encrypted_message))?;
+    let (message, _) = Message::from_armor_single(Cursor::new(encrypted_message))
+        .map_err(|_| PgpError::DecryptionError(String::from("Invalid encrypted data")))?;
 
-    let (decrypted_message, _) = message.decrypt(
-        || private_key_passphrase.map(String::from).unwrap_or_default(),
-        &[&private_key],
-    )?;
+    let (decrypted_message, _) = message
+        .decrypt(
+            || private_key_passphrase.map(String::from).unwrap_or_default(),
+            &[&private_key],
+        )
+        .map_err(|e| {
+            if e.to_string().contains("incorrect keyring for this message")
+                || e.to_string().contains("Session key decryption failed")
+            {
+                PgpError::IncorrectPassphrase
+            } else {
+                PgpError::DecryptionError(format!("{:?}", e))
+            }
+        })?;
 
     match decrypted_message {
         Message::Literal(literal_message) => {
             let mut data = Vec::new();
-            literal_message.data().read_to_end(&mut data)?;
-            Ok(String::from_utf8(data)?)
+            literal_message
+                .data()
+                .read_to_end(&mut data)
+                .map_err(|e| PgpError::DecryptionError(format!("{:?}", e)))?;
+            String::from_utf8(data).map_err(|_| {
+                PgpError::DecryptionError(String::from("Decrypted message is not valid UTF-8"))
+            })
         }
-        _ => Err("Failed to decrypt: not a literal message".into()),
+        _ => Err(PgpError::DecryptionError(String::from(
+            "Not a literal message",
+        ))),
     }
 }
 
@@ -75,9 +106,7 @@ pub fn decrypt_internal(
 fn encrypt<'a>(env: Env<'a>, message: &str, public_key_path: &str) -> NifResult<Term<'a>> {
     match encrypt_internal(message, public_key_path) {
         Ok(encrypted) => {
-            // Create a new OwnedBinary with the size of the encrypted data
             let mut owned_binary = OwnedBinary::new(encrypted.len()).unwrap();
-            // Copy the encrypted data into the OwnedBinary
             owned_binary.as_mut_slice().copy_from_slice(&encrypted);
             Ok((
                 atoms::ok(),
@@ -85,10 +114,7 @@ fn encrypt<'a>(env: Env<'a>, message: &str, public_key_path: &str) -> NifResult<
             )
                 .encode(env))
         }
-        Err(e) => {
-            let error_message = format!("{:?}", e);
-            Ok((atoms::error(), error_message).encode(env))
-        }
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
@@ -105,10 +131,7 @@ fn decrypt<'a>(
         private_key_passphrase,
     ) {
         Ok(decrypted) => Ok((atoms::ok(), decrypted).encode(env)),
-        Err(e) => {
-            let error_message = format!("{:?}", e);
-            Ok((atoms::error(), error_message).encode(env))
-        }
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
