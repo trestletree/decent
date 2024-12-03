@@ -68,6 +68,15 @@ jobs:
           use-cross: ${{ matrix.job.use-cross }}
           project-dir: "native/decent"
 
+      - name: Generate checksum file
+        run: mix rustler_precompiled.download Decent --all --ignore-unavailable --print
+
+      - name: Upload checksum files
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksum-*.exs
+          path: checksum-*.exs
+
       - name: Artifact upload
         uses: actions/upload-artifact@v4
         with:
