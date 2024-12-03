@@ -107,7 +107,11 @@ jobs:
 
       - name: Generate checksum
         id: generate-checksum
-        run: mix rustler_precompiled.download Decent --all --ignore-unavailable --print
+        run: |
+          mix rustler_precompiled.download Decent --all --ignore-unavailable --print
+          CHECKSUM_FILE=$(ls checksum-*.exs)
+          echo "file-name=$CHECKSUM_FILE" >> $GITHUB_OUTPUT
+          echo "file-path=$(pwd)/$CHECKSUM_FILE" >> $GITHUB_OUTPUT
 
       - name: Upload checksum
         uses: actions/upload-artifact@v4
