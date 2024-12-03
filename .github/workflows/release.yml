@@ -84,6 +84,8 @@ jobs:
   generate_checksum:
     runs-on: ubuntu-20.04
     needs: build_release
+    env:
+      DECENT_BUILD: true
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
