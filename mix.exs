@@ -9,7 +9,8 @@ defmodule Decent.MixProject do
       version: @version,
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      package: package()
     ]
   end
 
@@ -25,6 +26,18 @@ defmodule Decent.MixProject do
     [
       {:rustler, "~> 0.35.0", optional: true},
       {:rustler_precompiled, "~> 0.6.0", runtime: false}
+    ]
+  end
+
+  defp package do
+    [
+      files: [
+        "lib",
+        "native",
+        "checksum-*.exs",
+        "mix.exs",
+        "README.md"
+      ]
     ]
   end
 end

@@ -7,7 +7,8 @@ defmodule Decent do
     otp_app: :decent,
     crate: :decent,
     base_url: "https://github.com/trestletree/decent/releases/download/v0.1.0",
-    version: "0.1.0"
+    version: "0.1.0",
+    force_build: System.get_env("DECENT_BUILD") in ["1", "true"]
 
   @doc """
   Encrypts a message using a public key.
