@@ -84,6 +84,10 @@ jobs:
   generate_checksum:
     runs-on: ubuntu-20.04
     needs: build_release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       DECENT_BUILD: true
     steps:
