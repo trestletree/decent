@@ -102,6 +102,9 @@ jobs:
       - name: Compile dependencies
         run: mix deps.compile
 
+      - name: Compile
+        run: mix compile
+
       - name: Generate checksum
         id: generate-checksum
         run: mix rustler_precompiled.download Decent --all --ignore-unavailable --print
