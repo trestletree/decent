@@ -28,5 +28,3 @@ decent-*.tar
 /Cargo.lock
 /target
 /priv/native/*.so
-
-/checksum-*
