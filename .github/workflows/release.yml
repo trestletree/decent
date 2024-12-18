@@ -112,7 +112,7 @@ jobs:
       - name: Generate checksum
         id: generate-checksum
         run: |
-          mix rustler_precompiled.download Decent --all --ignore-unavailable --print
+          mix rustler_precompiled.download Decent.Native --all --ignore-unavailable --print
           CHECKSUM_FILE=$(ls checksum-*.exs)
           echo "file-name=$CHECKSUM_FILE" >> $GITHUB_OUTPUT
           echo "file-path=$(pwd)/$CHECKSUM_FILE" >> $GITHUB_OUTPUT

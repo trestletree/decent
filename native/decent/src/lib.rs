@@ -136,4 +136,4 @@ fn decrypt<'a>(
     }
 }
 
-rustler::init!("Elixir.Decent");
+rustler::init!("Elixir.Decent.Native");
